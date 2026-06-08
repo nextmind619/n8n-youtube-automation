@@ -27,7 +27,8 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message || 'خطأ في الخادم' });
 });
 
-app.listen(config.port, () => {
-  console.log(`YouTube Automation API → http://localhost:${config.port}`);
-  console.log(`Health check → http://localhost:${config.port}/api/health`);
+const host = process.env.HOST || '0.0.0.0';
+app.listen(config.port, host, () => {
+  console.log(`YouTube Automation API → http://${host}:${config.port}`);
+  console.log(`Health check → http://${host}:${config.port}/api/health`);
 });
