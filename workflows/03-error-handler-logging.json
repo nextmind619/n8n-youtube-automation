@@ -1,0 +1,158 @@
+{
+  "name": "YouTube Automation - 03 Error Handler & Logging",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c3d4e5f6-0003-4000-8000-000000000001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {},
+      "id": "c3d4e5f6-0003-4000-8000-00000000000a",
+      "name": "Sub-Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json;\nconst execution = input.execution || input;\nconst { randomUUID } = require('crypto');\nconst errorMessage = input.error_message || execution?.error?.message || 'Unknown error';\nconst nodeName = input.node_name || execution?.lastNodeExecuted || 'unknown';\nconst workflow = input.workflow || execution?.workflow?.name || 'unknown';\nreturn [{\n  json: {\n    error_id: randomUUID(),\n    timestamp: new Date().toISOString(),\n    workflow,\n    node_name: nodeName,\n    queue_id: input.queue_id || '',\n    video_id: input.video_id || '',\n    error_message: errorMessage,\n    stack_trace: JSON.stringify(execution?.error?.stack || execution?.error || {}),\n    retry_count: parseInt(input.retry_count || '0', 10),\n    sheetId: '1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0',\n    errorsTab: 'Errors',\n    queueTab: 'Queue',\n    logsTab: 'Logs',\n    metadata_json: input.metadata_json || JSON.stringify(execution)\n  }\n}];"
+      },
+      "id": "c3d4e5f6-0003-4000-8000-00000000000b",
+      "name": "Normalize Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "={{ $json.sheetId }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "={{ $json.errorsTab }}", "mode": "name" },
+        "columns": { "mappingMode": "autoMapInputData", "value": {} },
+        "options": {}
+      },
+      "id": "c3d4e5f6-0003-4000-8000-000000000003",
+      "name": "Log to Errors Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [480, 400],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_OAUTH", "name": "Google Sheets OAuth" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "has-queue", "leftValue": "={{ $('Normalize Error Payload').first().json.queue_id }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } },
+            { "id": "can-retry", "leftValue": "={{ $('Normalize Error Payload').first().json.retry_count }}", "rightValue": 3, "operator": { "type": "number", "operation": "lt" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-0003-4000-8000-000000000004",
+      "name": "Should Retry Queue Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "={{ $('Normalize Error Payload').first().json.sheetId }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "={{ $('Normalize Error Payload').first().json.queueTab }}", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "retry",
+            "retry_count": "={{ $('Normalize Error Payload').first().json.retry_count + 1 }}",
+            "error_message": "={{ $('Normalize Error Payload').first().json.error_message }}",
+            "scheduled_at": "={{ $now.plus({ minutes: 30 }).toISO() }}"
+          },
+          "matchingColumns": ["queue_id"]
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-0003-4000-8000-000000000005",
+      "name": "Mark Queue for Retry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [960, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_OAUTH", "name": "Google Sheets OAuth" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "={{ $('Normalize Error Payload').first().json.sheetId }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "={{ $('Normalize Error Payload').first().json.queueTab }}", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "failed",
+            "error_message": "={{ $('Normalize Error Payload').first().json.error_message }}",
+            "completed_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": ["queue_id"]
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-0003-4000-8000-000000000006",
+      "name": "Mark Queue Failed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [960, 500],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_OAUTH", "name": "Google Sheets OAuth" } }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "={{ $('Normalize Error Payload').first().json.sheetId }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "={{ $('Normalize Error Payload').first().json.logsTab }}", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "log_id": "={{ $('Normalize Error Payload').first().json.error_id }}",
+            "timestamp": "={{ $('Normalize Error Payload').first().json.timestamp }}",
+            "level": "error",
+            "workflow": "={{ $('Normalize Error Payload').first().json.workflow }}",
+            "message": "=Error in {{ $('Normalize Error Payload').first().json.node_name }}: {{ $('Normalize Error Payload').first().json.error_message }}",
+            "metadata_json": "={{ $('Normalize Error Payload').first().json.metadata_json }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-0003-4000-8000-000000000007",
+      "name": "Log to Logs Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1200, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_OAUTH", "name": "Google Sheets OAuth" } }
+    }
+  ],
+  "connections": {
+    "Error Trigger": { "main": [[{ "node": "Normalize Error Payload", "type": "main", "index": 0 }]] },
+    "Sub-Workflow Trigger": { "main": [[{ "node": "Normalize Error Payload", "type": "main", "index": 0 }]] },
+    "Normalize Error Payload": { "main": [[{ "node": "Log to Errors Sheet", "type": "main", "index": 0 }]] },
+    "Log to Errors Sheet": { "main": [[{ "node": "Should Retry Queue Item?", "type": "main", "index": 0 }]] },
+    "Should Retry Queue Item?": {
+      "main": [
+        [{ "node": "Mark Queue for Retry", "type": "main", "index": 0 }],
+        [{ "node": "Mark Queue Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mark Queue for Retry": { "main": [[{ "node": "Log to Logs Sheet", "type": "main", "index": 0 }]] },
+    "Mark Queue Failed": { "main": [[{ "node": "Log to Logs Sheet", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1", "timezone": "America/New_York" },
+  "staticData": null,
+  "tags": [{ "name": "youtube-automation" }],
+  "meta": { "templateCredsSetupCompleted": false, "instanceId": "youtube-automation-system" }
+}

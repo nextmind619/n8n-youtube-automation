@@ -1,0 +1,22 @@
+{
+  "n8n_base_url": "https://darkvault.app.n8n.cloud",
+  "google_sheets_document_id": "1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+  "google_sheets_url": "https://docs.google.com/spreadsheets/d/1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0/edit",
+  "sheets_tabs": {
+    "queue": "Queue",
+    "content": "Content",
+    "errors": "Errors",
+    "logs": "Logs"
+  },
+  "defaults": {
+    "videos_per_day": 20,
+    "batch_delay_minutes": 72,
+    "channel_niche": "AI Workflow & Automation for Business - Make.com n8n Zapier no-code tutorials",
+    "openai_model": "gpt-4o",
+    "openai_image_model": "dall-e-3",
+    "elevenlabs_model": "eleven_multilingual_v2",
+    "youtube_default_category": "28",
+    "youtube_default_privacy": "unlisted",
+    "runway_enabled": "false"
+  }
+}

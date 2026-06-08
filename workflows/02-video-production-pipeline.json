@@ -1,0 +1,1643 @@
+{
+  "name": "YouTube Automation - 02 Video Production Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */1 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b2c3d4e5-0001-4000-8000-000000000000",
+      "name": "Hourly Queue Processor",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b2c3d4e5-0002-4000-8000-000000000000",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "sheetId",
+              "value": "={{ $vars.GOOGLE_SHEETS_DOCUMENT_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "queueTab",
+              "value": "={{ $vars.GOOGLE_SHEETS_QUEUE_TAB || 'Queue' }}",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "contentTab",
+              "value": "={{ $vars.GOOGLE_SHEETS_CONTENT_TAB || 'Content' }}",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "openaiModel",
+              "value": "={{ $vars.OPENAI_MODEL || 'gpt-4o' }}",
+              "type": "string"
+            },
+            {
+              "id": "c5",
+              "name": "voiceId",
+              "value": "={{ $vars.ELEVENLABS_VOICE_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c6",
+              "name": "niche",
+              "value": "={{ $vars.CHANNEL_NICHE || 'AI Workflow & Automation for Business - Make.com n8n Zapier no-code tutorials' }}",
+              "type": "string"
+            },
+            {
+              "id": "c7",
+              "name": "creatomateShortTpl",
+              "value": "={{ $vars.CREATOMATE_SHORT_TEMPLATE_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c8",
+              "name": "creatomateLongTpl",
+              "value": "={{ $vars.CREATOMATE_LONG_TEMPLATE_ID }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0003-4000-8000-000000000000",
+      "name": "Load Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.queueTab }}",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "pending"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "id": "b2c3d4e5-0004-4000-8000-000000000000",
+      "name": "Get Next Pending Item",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_OAUTH",
+          "name": "Google Sheets OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-topic",
+              "leftValue": "={{ $json.topic }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "due",
+              "leftValue": "={{ !$json.scheduled_at || DateTime.fromISO($json.scheduled_at) <= $now }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0005-4000-8000-000000000000",
+      "name": "Has Processable Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nconst config = $('Load Config').first().json;\nconst { randomUUID } = require('crypto');\nreturn [{ json: { ...config, ...item, video_id: randomUUID(), status: 'processing', started_at: new Date().toISOString() } }];"
+      },
+      "id": "b2c3d4e5-0006-4000-8000-000000000000",
+      "name": "Init Video Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.queueTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "processing",
+            "started_at": "={{ $json.started_at }}"
+          },
+          "matchingColumns": [
+            "queue_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0007-4000-8000-000000000000",
+      "name": "Mark Queue Processing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1100,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_OAUTH",
+          "name": "Google Sheets OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Init Video Job').first().json;\nconst model = job.openaiModel || $vars.OPENAI_MODEL || 'gpt-4o';\nconst topic = job.topic || 'AI automation';\nconst niche = job.niche || $vars.CHANNEL_NICHE || '';\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.openai.com/v1/chat/completions',\n  headers: {\n    Authorization: 'Bearer ' + $vars.OPENAI_API_KEY,\n    'Content-Type': 'application/json',\n  },\n  body: {\n    model,\n    temperature: 0.85,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: 'Return JSON with viral_title and hook_text fields.' },\n      { role: 'user', content: 'Topic: ' + topic + '\\nNiche: ' + niche + '\\nWrite a viral YouTube title for an AI automation channel.' },\n    ],\n  },\n  json: true,\n});\n\nreturn [{ json: response }];"
+      },
+      "id": "b2c3d4e5-0008-4000-8000-000000000000",
+      "name": "Generate Viral Title",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Write 60-second YouTube Shorts tutorial scripts (~150 words) for faceless AI automation channels. Return JSON: { \\\"short_script\\\": string }\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ JSON.parse($('Generate Viral Title').first().json.choices[0].message.content).viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nHook: pain point in 2 seconds. Explain 1 actionable tip. End: check description for tools.\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-0009-4000-8000-000000000000",
+      "name": "Generate Short Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Write 8-10 minute faceless tutorial narration (~1400 words) for AI automation channels. Return JSON: { \\\"long_script\\\": string, \\\"chapters\\\": [{\\\"time\\\": string, \\\"title\\\": string}] }\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ JSON.parse($('Generate Viral Title').first().json.choices[0].message.content).viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nStructure: hook (pain point), what you will learn, step-by-step concepts (Make.com/n8n/Zapier/no-code), common mistakes, recap, CTA to check description for tool links. No fictional stories.\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-000a-4000-8000-000000000000",
+      "name": "Generate Long Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Create scene-by-scene visual prompts for faceless SaaS tutorial videos. Return JSON: { \\\"scenes\\\": [{ \\\"id\\\": number, \\\"duration_sec\\\": number, \\\"visual_prompt\\\": string, \\\"motion\\\": string, \\\"narration_excerpt\\\": string }] }. 12 scenes for Short, 24 for long.\" },\n    { \"role\": \"user\", \"content\": \"Short script: {{ JSON.parse($('Generate Short Script').first().json.choices[0].message.content).short_script }}\\nLong script excerpt: {{ JSON.parse($('Generate Long Script').first().json.choices[0].message.content).long_script.slice(0,2000) }}\\nVisual style: modern tech explainer, abstract dashboards, workflow nodes, laptops, automation icons, clean blue/purple lighting, professional, no readable text, no logos.\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-000b-4000-8000-000000000000",
+      "name": "Generate Scene Prompts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const job = $('Init Video Job').first().json;\nconst title = JSON.parse($('Generate Viral Title').first().json.choices[0].message.content);\nconst short = JSON.parse($('Generate Short Script').first().json.choices[0].message.content);\nconst long = JSON.parse($('Generate Long Script').first().json.choices[0].message.content);\nconst scenes = JSON.parse($('Generate Scene Prompts').first().json.choices[0].message.content).scenes || [];\nreturn scenes.map(s => ({ json: { ...job, viral_title: title.viral_title, hook_text: title.hook_text, short_script: short.short_script, long_script: long.long_script, scene: s } }));"
+      },
+      "id": "b2c3d4e5-000c-4000-8000-000000000000",
+      "name": "Split Scenes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $vars.OPENAI_IMAGE_MODEL || 'dall-e-3' }}\",\n  \"prompt\": \"{{ $json.scene.visual_prompt }}, modern SaaS tech explainer, 16:9, clean professional lighting, abstract UI, no text, no logos\",\n  \"n\": 1,\n  \"size\": \"1792x1024\"\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-000d-4000-8000-000000000000",
+      "name": "Generate Scene Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dev.runwayml.com/v1/image_to_video",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.RUNWAY_API_KEY }}"
+            },
+            {
+              "name": "X-Runway-Version",
+              "value": "2024-11-06"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"promptImage\": \"{{ $json.data[0].url || $json.scene_assets?.image_url }}\",\n  \"promptText\": \"{{ $json.scene.visual_prompt }}\",\n  \"model\": \"gen3a_turbo\",\n  \"duration\": 5\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "b2c3d4e5-000e-4000-8000-000000000000",
+      "name": "Runway Video Gen (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst job = $('Init Video Job').first().json;\nconst title = JSON.parse($('Generate Viral Title').first().json.choices[0].message.content);\nconst short = JSON.parse($('Generate Short Script').first().json.choices[0].message.content);\nconst long = JSON.parse($('Generate Long Script').first().json.choices[0].message.content);\nconst sceneAssets = items.map((it, i) => {\n  const img = $('Generate Scene Image').all()[i]?.json?.data?.[0]?.url;\n  const runway = it.json?.id || it.json?.task_id;\n  return { id: i + 1, image_url: img, video_task_id: runway || null, prompt: it.json.scene?.visual_prompt };\n});\nreturn [{ json: { ...job, viral_title: title.viral_title, hook_text: title.hook_text, short_script: short.short_script, long_script: long.long_script, scene_assets_json: JSON.stringify(sceneAssets) } }];"
+      },
+      "id": "b2c3d4e5-000f-4000-8000-000000000000",
+      "name": "Collect Scene Assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $('Init Video Job').first().json.voiceId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "={{ $vars.ELEVENLABS_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "audio/mpeg"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify(JSON.parse($('Generate Short Script').first().json.choices[0].message.content).short_script) }},\n  \"model_id\": \"{{ $vars.ELEVENLABS_MODEL || 'eleven_multilingual_v2' }}\",\n  \"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.75 }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "voiceover_short"
+            }
+          }
+        }
+      },
+      "id": "b2c3d4e5-0010-4000-8000-000000000000",
+      "name": "ElevenLabs Short Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tmpfiles.org/api/v1/upload",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "voiceover_short"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-002c-4000-8000-000000000000",
+      "name": "Upload Short Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const upload = $input.first().json;\nconst raw = upload?.data?.url || upload?.url || '';\nconst voiceover_url = raw.replace('tmpfiles.org/', 'tmpfiles.org/dl/');\nconst job = $('Collect Scene Assets').first().json;\nreturn [{ json: { ...job, voiceover_short_url: voiceover_url } }];"
+      },
+      "id": "b2c3d4e5-002d-4000-8000-000000000000",
+      "name": "Parse Voiceover URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $('Init Video Job').first().json.voiceId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "={{ $vars.ELEVENLABS_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "audio/mpeg"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify(JSON.parse($('Generate Long Script').first().json.choices[0].message.content).long_script) }},\n  \"model_id\": \"{{ $vars.ELEVENLABS_MODEL || 'eleven_multilingual_v2' }}\",\n  \"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.75 }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "voiceover_long"
+            }
+          }
+        }
+      },
+      "id": "b2c3d4e5-0011-4000-8000-000000000000",
+      "name": "ElevenLabs Long Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const short = JSON.parse($('Generate Short Script').first().json.choices[0].message.content).short_script;\nconst words = short.split(/\\s+/);\nconst wps = 2.5;\nlet srt = '';\nlet t = 0;\nconst chunks = [];\nfor (let i = 0; i < words.length; i += 6) chunks.push(words.slice(i, i + 6).join(' '));\nchunks.forEach((chunk, idx) => {\n  const start = t;\n  const dur = chunk.split(' ').length / wps;\n  t += dur;\n  const fmt = s => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60),ms=Math.floor((s%1)*1000); return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')},${String(ms).padStart(3,'0')}`; };\n  srt += `${idx+1}\\n${fmt(start)} --> ${fmt(t)}\\n${chunk}\\n\\n`;\n});\nconst job = $('Parse Voiceover URL').first().json;\nreturn [{ json: { ...job, captions_srt: srt } }];"
+      },
+      "id": "b2c3d4e5-0012-4000-8000-000000000000",
+      "name": "Generate Captions SRT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Return JSON: { \\\"thumbnail_prompt\\\": string } for a high-CTR YouTube tutorial thumbnail. Bold composition, 1280x720, large readable title words allowed in design mockup only.\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ $('Collect Scene Assets').first().json.viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nStyle: tech tutorial, automation/workflow theme, bright contrast, faceless, icons (gears, nodes, laptop), not horror, not true crime.\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-0013-4000-8000-000000000000",
+      "name": "Generate Thumbnail Prompt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $vars.OPENAI_IMAGE_MODEL || 'dall-e-3' }}\",\n  \"prompt\": \"{{ JSON.parse($('Generate Thumbnail Prompt').first().json.choices[0].message.content).thumbnail_prompt }}\",\n  \"n\": 1,\n  \"size\": \"1792x1024\"\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-0014-4000-8000-000000000000",
+      "name": "Generate Thumbnail Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4180,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Return JSON: { \\\"seo_title\\\": string (max 100 chars), \\\"seo_description\\\": string (with chapters/timestamps + affiliate disclosure + placeholder tool links), \\\"seo_tags\\\": string (comma-separated, 15 tags) }\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ $('Collect Scene Assets').first().json.viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nNiche: AI workflow automation for business. Chapters: {{ JSON.parse($('Generate Long Script').first().json.choices[0].message.content).chapters }}\\nInclude in description: affiliate disclosure line, sections Tools Mentioned and Timestamps, tags like automation, n8n, make.com, zapier, no-code, ai tools.\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-0015-4000-8000-000000000000",
+      "name": "Generate SEO Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const job = $('Generate Captions SRT').first().json;\nconst voice = $('Parse Voiceover URL').first().json;\nconst seo = JSON.parse($('Generate SEO Metadata').first().json.choices[0].message.content);\nconst thumb = $('Generate Thumbnail Image').first().json.data[0].url;\nconst thumbPrompt = JSON.parse($('Generate Thumbnail Prompt').first().json.choices[0].message.content);\nconst scenes = JSON.parse(job.scene_assets_json);\nconst modifications = {\n  voiceover_url: voice.voiceover_short_url,\n  hook_text: job.hook_text,\n  captions_srt: job.captions_srt,\n  thumbnail_url: thumb\n};\nscenes.forEach((s, i) => { modifications[`scene_${i+1}_url`] = s.image_url; });\nreturn [{ json: { ...job, voiceover_short_url: voice.voiceover_short_url, thumbnail_url: thumb, thumbnail_prompt: thumbPrompt.thumbnail_prompt, seo_title: seo.seo_title, seo_description: seo.seo_description, seo_tags: seo.seo_tags, creatomate_modifications: modifications } }];"
+      },
+      "id": "b2c3d4e5-0016-4000-8000-000000000000",
+      "name": "Build Creatomate Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.CREATOMATE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"template_id\": \"{{ $('Build Creatomate Payload').first().json.creatomateShortTpl }}\",\n  \"modifications\": {{ JSON.stringify($json.creatomate_modifications) }}\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-0018-4000-8000-000000000000",
+      "name": "Render Short via Creatomate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4840,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "b2c3d4e5-0019-4000-8000-000000000000",
+      "name": "Wait for Short Render",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5060,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.creatomate.com/v1/renders/{{ $('Render Short via Creatomate').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.CREATOMATE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-001a-4000-8000-000000000000",
+      "name": "Poll Short Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5280,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.CREATOMATE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"template_id\": \"{{ $('Build Creatomate Payload').first().json.creatomateLongTpl }}\",\n  \"modifications\": {{ JSON.stringify($json.creatomate_modifications) }}\n}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-001b-4000-8000-000000000000",
+      "name": "Render Long via Creatomate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4840,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "amount": 120,
+        "unit": "seconds"
+      },
+      "id": "b2c3d4e5-001c-4000-8000-000000000000",
+      "name": "Wait for Long Render",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5060,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.creatomate.com/v1/renders/{{ $('Render Long via Creatomate').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.CREATOMATE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-001d-4000-8000-000000000000",
+      "name": "Poll Long Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5280,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "b2c3d4e5-001e-4000-8000-000000000000",
+      "name": "Merge Render Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        5280,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const payload = $('Build Creatomate Payload').first().json;\nconst shortRender = $('Poll Short Render Status').first().json;\nconst longRender = $('Poll Long Render Status').first().json;\nreturn [{ json: {\n  ...payload,\n  final_short_url: shortRender.url || shortRender[0]?.url,\n  final_long_url: longRender.url || longRender[0]?.url,\n  creatomate_short_render_id: shortRender.id,\n  creatomate_long_render_id: longRender.id,\n  updated_at: new Date().toISOString()\n}}];"
+      },
+      "id": "b2c3d4e5-001f-4000-8000-000000000000",
+      "name": "Prepare Upload Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.final_short_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "video_short"
+            }
+          }
+        }
+      },
+      "id": "b2c3d4e5-0020-4000-8000-000000000000",
+      "name": "Download Short Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5720,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.seo_title }} #Shorts",
+        "categoryId": "={{ $vars.YOUTUBE_DEFAULT_CATEGORY || 28 }}",
+        "options": {
+          "description": "={{ $json.seo_description }}",
+          "tags": "={{ $json.seo_tags }}",
+          "privacyStatus": "={{ $vars.YOUTUBE_DEFAULT_PRIVACY || 'public' }}"
+        },
+        "binaryProperty": "video_short"
+      },
+      "id": "b2c3d4e5-0021-4000-8000-000000000000",
+      "name": "Upload Short to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        5940,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "YOUTUBE_OAUTH",
+          "name": "YouTube OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.final_long_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "video_long"
+            }
+          }
+        }
+      },
+      "id": "b2c3d4e5-0022-4000-8000-000000000000",
+      "name": "Download Long Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5720,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.seo_title }}",
+        "categoryId": "={{ $vars.YOUTUBE_DEFAULT_CATEGORY || 28 }}",
+        "options": {
+          "description": "={{ $json.seo_description }}",
+          "tags": "={{ $json.seo_tags }}",
+          "privacyStatus": "={{ $vars.YOUTUBE_DEFAULT_PRIVACY || 'public' }}"
+        },
+        "binaryProperty": "video_long"
+      },
+      "id": "b2c3d4e5-0023-4000-8000-000000000000",
+      "name": "Upload Long to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        5940,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "YOUTUBE_OAUTH",
+          "name": "YouTube OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "b2c3d4e5-0024-4000-8000-000000000000",
+      "name": "Merge YouTube Uploads",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        6160,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const prep = $('Prepare Upload Data').first().json;\nconst shortYt = $('Upload Short to YouTube').first().json;\nconst longYt = $('Upload Long to YouTube').first().json;\nreturn [{ json: {\n  ...prep,\n  status: 'completed',\n  youtube_short_id: shortYt.id,\n  youtube_long_id: longYt.id,\n  youtube_short_url: `https://youtube.com/shorts/${shortYt.id}`,\n  youtube_long_url: `https://youtube.com/watch?v=${longYt.id}`,\n  created_at: prep.started_at,\n  completed_at: new Date().toISOString()\n}}];"
+      },
+      "id": "b2c3d4e5-0025-4000-8000-000000000000",
+      "name": "Finalize Content Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6380,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.contentTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0026-4000-8000-000000000000",
+      "name": "Save Content to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        6600,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_OAUTH",
+          "name": "Google Sheets OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.queueTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "completed",
+            "completed_at": "={{ $json.completed_at }}"
+          },
+          "matchingColumns": [
+            "queue_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0027-4000-8000-000000000000",
+      "name": "Mark Queue Completed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        6820,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_OAUTH",
+          "name": "Google Sheets OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEETS_LOGS_TAB || 'Logs' }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "log_id": "={{ $json.video_id }}",
+            "timestamp": "={{ $now.toISO() }}",
+            "level": "info",
+            "workflow": "02-video-production",
+            "message": "=Video published: {{ $json.youtube_long_url }}",
+            "metadata_json": "={{ JSON.stringify({ queue_id: $json.queue_id, topic: $json.topic }) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0028-4000-8000-000000000000",
+      "name": "Log Production Success",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        7040,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_OAUTH",
+          "name": "Google Sheets OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "b2c3d4e5-0029-4000-8000-000000000000",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "={{ $vars.WORKFLOW_ERROR_HANDLER_ID }}",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "02-video-production",
+            "error_message": "={{ $json.execution.error.message }}",
+            "node_name": "={{ $json.execution.lastNodeExecuted }}",
+            "queue_id": "={{ $json.execution?.data?.[0]?.json?.queue_id || '' }}",
+            "metadata_json": "={{ JSON.stringify($json.execution) }}"
+          }
+        }
+      },
+      "id": "b2c3d4e5-002a-4000-8000-000000000000",
+      "name": "Call Error Handler",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        600
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b2c3d4e5-002b-4000-8000-000000000000",
+      "name": "No Items - Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Hourly Queue Processor": {
+      "main": [
+        [
+          {
+            "node": "Load Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config": {
+      "main": [
+        [
+          {
+            "node": "Get Next Pending Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Pending Item": {
+      "main": [
+        [
+          {
+            "node": "Has Processable Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Processable Item?": {
+      "main": [
+        [
+          {
+            "node": "Init Video Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Items - Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Video Job": {
+      "main": [
+        [
+          {
+            "node": "Mark Queue Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Queue Processing": {
+      "main": [
+        [
+          {
+            "node": "Generate Viral Title",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Viral Title": {
+      "main": [
+        [
+          {
+            "node": "Generate Short Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Short Script": {
+      "main": [
+        [
+          {
+            "node": "Generate Long Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Long Script": {
+      "main": [
+        [
+          {
+            "node": "Generate Scene Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Scene Prompts": {
+      "main": [
+        [
+          {
+            "node": "Split Scenes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Scenes": {
+      "main": [
+        [
+          {
+            "node": "Generate Scene Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Scene Image": {
+      "main": [
+        [
+          {
+            "node": "Runway Video Gen (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Runway Video Gen (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Collect Scene Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Scene Assets": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs Long Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Short Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Upload Short Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Short Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Parse Voiceover URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Voiceover URL": {
+      "main": [
+        [
+          {
+            "node": "Generate Captions SRT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Long Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Generate Captions SRT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Captions SRT": {
+      "main": [
+        [
+          {
+            "node": "Generate Thumbnail Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thumbnail Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Thumbnail Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thumbnail Image": {
+      "main": [
+        [
+          {
+            "node": "Generate SEO Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate SEO Metadata": {
+      "main": [
+        [
+          {
+            "node": "Build Creatomate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Creatomate Payload": {
+      "main": [
+        [
+          {
+            "node": "Render Long via Creatomate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Short via Creatomate": {
+      "main": [
+        [
+          {
+            "node": "Wait for Short Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Short Render": {
+      "main": [
+        [
+          {
+            "node": "Poll Short Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Long via Creatomate": {
+      "main": [
+        [
+          {
+            "node": "Wait for Long Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Long Render": {
+      "main": [
+        [
+          {
+            "node": "Poll Long Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Short Render Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Render Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Long Render Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Render Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Render Results": {
+      "main": [
+        [
+          {
+            "node": "Prepare Upload Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Upload Data": {
+      "main": [
+        [
+          {
+            "node": "Download Long Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Short Video": {
+      "main": [
+        [
+          {
+            "node": "Upload Short to YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Long Video": {
+      "main": [
+        [
+          {
+            "node": "Upload Long to YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Short to YouTube": {
+      "main": [
+        [
+          {
+            "node": "Merge YouTube Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Long to YouTube": {
+      "main": [
+        [
+          {
+            "node": "Merge YouTube Uploads",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge YouTube Uploads": {
+      "main": [
+        [
+          {
+            "node": "Finalize Content Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Content Record": {
+      "main": [
+        [
+          {
+            "node": "Save Content to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Content to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Mark Queue Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Queue Completed": {
+      "main": [
+        [
+          {
+            "node": "Log Production Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Call Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "youtube-automation"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "youtube-automation-system"
+  }
+}

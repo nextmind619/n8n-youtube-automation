@@ -1,0 +1,17 @@
+# Secrets — never commit
+config/secrets.env
+config/google-service-account.json
+**/.env
+**/.env.local
+
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/build/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log

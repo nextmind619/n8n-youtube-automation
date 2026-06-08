@@ -1,0 +1,147 @@
+{
+  "output_format": "mp4",
+  "width": 1080,
+  "height": 1920,
+  "frame_rate": 30,
+  "duration": 60,
+  "elements": [
+    {
+      "type": "composition",
+      "track": 1,
+      "duration": 60,
+      "elements": [
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_1_url }}",
+          "duration": 5,
+          "time": 0,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_2_url }}",
+          "duration": 5,
+          "time": 5,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_3_url }}",
+          "duration": 5,
+          "time": 10,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_4_url }}",
+          "duration": 5,
+          "time": 15,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_5_url }}",
+          "duration": 5,
+          "time": 20,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_6_url }}",
+          "duration": 5,
+          "time": 25,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_7_url }}",
+          "duration": 5,
+          "time": 30,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_8_url }}",
+          "duration": 5,
+          "time": 35,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_9_url }}",
+          "duration": 5,
+          "time": 40,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_10_url }}",
+          "duration": 5,
+          "time": 45,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_11_url }}",
+          "duration": 5,
+          "time": 50,
+          "fit": "cover"
+        },
+        {
+          "type": "image",
+          "track": 1,
+          "source": "{{ scene_12_url }}",
+          "duration": 5,
+          "time": 55,
+          "fit": "cover"
+        },
+        {
+          "type": "audio",
+          "track": 2,
+          "source": "{{ voiceover_url }}",
+          "time": 0
+        },
+        {
+          "type": "text",
+          "track": 3,
+          "text": "{{ hook_text }}",
+          "time": 0,
+          "duration": 3,
+          "y": "85%",
+          "width": "90%",
+          "x_alignment": "50%",
+          "y_alignment": "50%",
+          "font_family": "Montserrat",
+          "font_weight": "800",
+          "font_size": "6 vmin",
+          "fill_color": "#ffffff",
+          "stroke_color": "#000000",
+          "stroke_width": "0.3 vmin"
+        },
+        {
+          "type": "subtitles",
+          "track": 4,
+          "source": "{{ captions_srt }}",
+          "time": 0,
+          "font_family": "Montserrat",
+          "font_weight": "700",
+          "font_size": "5 vmin",
+          "fill_color": "#ffffff",
+          "stroke_color": "#000000",
+          "stroke_width": "0.2 vmin"
+        }
+      ]
+    }
+  ]
+}

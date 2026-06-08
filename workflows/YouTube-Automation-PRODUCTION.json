@@ -1,0 +1,3185 @@
+{
+  "name": "AI Workflow Automation for Business",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a99318dc-4764-4877-aabd-5875a462f2e0",
+      "name": "Daily 6AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2672,
+        -432
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "v1",
+              "name": "videosPerDay",
+              "value": "={{ $vars.VIDEOS_PER_DAY || 20 }}",
+              "type": "number"
+            },
+            {
+              "id": "v2",
+              "name": "niche",
+              "value": "={{ $vars.CHANNEL_NICHE || 'AI Workflow & Automation for Business - Make.com n8n Zapier no-code tutorials' }}",
+              "type": "string"
+            },
+            {
+              "id": "v3",
+              "name": "sheetId",
+              "value": "={{ $vars.GOOGLE_SHEETS_DOCUMENT_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "v4",
+              "name": "queueTab",
+              "value": "={{ $vars.GOOGLE_SHEETS_QUEUE_TAB || 'Queue' }}",
+              "type": "string"
+            },
+            {
+              "id": "v5",
+              "name": "openaiModel",
+              "value": "={{ $vars.OPENAI_MODEL || 'gpt-4o' }}",
+              "type": "string"
+            },
+            {
+              "id": "v6",
+              "name": "runId",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "94d0763a-9013-404a-bcb5-b7f476d55f93",
+      "name": "Load Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2464,
+        -624
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/n8n/hot.json?limit=25",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-youtube-automation/1.0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "85542d96-0181-44ad-8976-faa7433ecda7",
+      "name": "Fetch Reddit n8n",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        -832
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=make.com+n8n+zapier+AI+automation+workflow&hl=en-US&gl=US&ceid=US:en",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "5265aa50-17ab-453b-8322-bea7493f3faa",
+      "name": "Fetch Google News RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        -448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Load Config').first().json;\nconst reddit = $('Fetch Reddit n8n').first().json;\nconst newsXml = $('Fetch Google News RSS').first().json?.data || '';\n\nconst redditTopics = [];\ntry {\n  const posts = reddit?.data?.children || [];\n  for (const p of posts) {\n    const title = p?.data?.title;\n    if (title && title.length > 15) {\n      redditTopics.push({ topic: title.replace(/\\[.*?\\]/g, '').trim(), source: 'reddit', score: p.data.ups || 0 });\n    }\n  }\n} catch (e) { /* reddit parse fail ok */ }\n\nconst newsTopics = [];\nconst titleRegex = /<title><!\\[CDATA\\[(.*?)\\]\\]><\\/title>/g;\nlet m;\nwhile ((m = titleRegex.exec(newsXml)) !== null) {\n  const t = m[1];\n  if (t && !t.includes('Google News') && t.length > 20) {\n    newsTopics.push({ topic: t.trim(), source: 'news', score: 50 });\n  }\n}\n\nconst combined = [...redditTopics, ...newsTopics]\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 40);\n\nreturn [{ json: { ...config, rawTopics: combined, rawCount: combined.length } }];"
+      },
+      "id": "674458be-310c-464d-bf29-3a5bd6a40cd2",
+      "name": "Merge Topic Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1856,
+        -608
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $json.openaiModel }}\",\n  \"temperature\": 0.8,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a YouTube trend researcher for English faceless AI workflow automation channels (Make.com, n8n, Zapier). Pick unique viral-worthy topics. Return JSON: { \\\"topics\\\": [{ \\\"topic\\\": string, \\\"angle\\\": string, \\\"priority\\\": 1-10 }] }\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Niche: {{ $json.niche }}\\nPick exactly {{ $json.videosPerDay }} unique tutorial topics for automation/AI business from these sources. Avoid duplicates and duplicate or off-topic content.\\n\\nSources:\\n{{ JSON.stringify($json.rawTopics) }}\"\n    }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "0383e1fa-769e-43cc-89bb-c11a4c15f18c",
+      "name": "OpenAI Curate Topics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1680,
+        -384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Merge Topic Sources').first().json;\nconst ai = $input.first().json;\n\nlet topics = [];\ntry {\n  const content = ai?.choices?.[0]?.message?.content || '{}';\n  const parsed = JSON.parse(content);\n  topics = parsed.topics || (Array.isArray(parsed) ? parsed : []);\n} catch (e) {\n  const fallbackTopic = config.niche || 'AI Workflow Automation Tutorial';\n  topics = [{ topic: fallbackTopic + ' - ' + new Date().toISOString().slice(0, 10), angle: 'fallback', priority: 5 }];\n}\n\nif (!Array.isArray(topics)) topics = [topics];\nif (topics.length === 0) {\n  topics = [{ topic: 'How to Automate Your Business with n8n in 2026', angle: 'default', priority: 5 }];\n}\n\nconst { randomUUID } = require('crypto');\nconst now = new Date();\nconst delayMinutes = 72;\nconst limit = Math.max(1, parseInt(config.videosPerDay || 20, 10));\n\nconst queueItems = topics.slice(0, limit).map((t, i) => {\n  const scheduled = new Date(now.getTime() + i * delayMinutes * 60 * 1000);\n  return {\n    queue_id: randomUUID(),\n    status: 'pending',\n    topic: (t.topic || t || 'AI automation tutorial').toString().trim(),\n    source: t.source || 'ai_generated',\n    priority: t.priority || (10 - i),\n    retry_count: 0,\n    scheduled_at: scheduled.toISOString(),\n    started_at: '',\n    completed_at: '',\n    error_message: ''\n  };\n});\n\nreturn queueItems.map(item => ({ json: item }));"
+      },
+      "id": "ddd32db5-d994-41b1-aa9d-698d9a09fa04",
+      "name": "Build Queue Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1520,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {
+            "queue_id": "={{ $now.toMillis() + '-' + Math.random().toString(36).slice(2) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "queue_id",
+              "displayName": "queue_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "scheduled_at",
+              "displayName": "scheduled_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "completed_at",
+              "displayName": "completed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "2b8d08a9-181b-4ac0-aea2-3344a9a5abd0",
+      "name": "Write Queue to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1344,
+        -336
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Logs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "log_id": "={{ $now.toMillis() + '-' + Math.random().toString(36).slice(2) }}",
+            "timestamp": "={{ $now.toISO() }}",
+            "level": "info",
+            "workflow": "01-daily-topic-discovery",
+            "message": "=Queued {{ $('Build Queue Items').all().length }} topics for production",
+            "metadata_json": "={{ JSON.stringify({ runId: $('Load Config').first().json.runId }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "log_id",
+              "displayName": "log_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metadata_json",
+              "displayName": "metadata_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b7f51ebd-a639-43b4-bf70-e3948e39f9b3",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1040,
+        -480
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "8a691417-04f5-4443-aaf7-39a724f2c119",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2896,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "={{ $vars.WORKFLOW_ERROR_HANDLER_ID }}",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "01-daily-topic-discovery",
+            "error_message": "={{ $json.execution.error.message }}",
+            "node_name": "={{ $json.execution.lastNodeExecuted }}",
+            "metadata_json": "={{ JSON.stringify($json.execution) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "8658bc13-8489-4049-91a0-806d159a6ef5",
+      "name": "Call Error Handler",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1968,
+        -336
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */1 * * *"
+            }
+          ]
+        }
+      },
+      "id": "4f05e33d-0efc-4f92-a33c-8207a0aadcd2",
+      "name": "Hourly Queue Processor",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -6192,
+        -560
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fac5b84c-88c9-4e15-9a1c-07dcc3e91807",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -6160,
+        -1152
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Queue",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "pending"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        },
+        "operation": "read"
+      },
+      "id": "27ee04ad-71ec-48c5-b3c9-0f6796e7e099",
+      "name": "Get Next Pending Item",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -5936,
+        -368
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-topic",
+              "leftValue": "={{ $json.topic }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "due",
+              "leftValue": "={{ !$json.scheduled_at || DateTime.fromISO($json.scheduled_at) <= $now }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b956c038-9e41-43c6-97dc-358ea1fdbf72",
+      "name": "Has Processable Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -5760,
+        -1136
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst config = $('Load Config1').first().json;\nconst { randomUUID } = require('crypto');\nreturn [{ json: { ...config, ...item, video_id: randomUUID(), status: 'processing', started_at: new Date().toISOString() } }];"
+      },
+      "id": "36098f84-6cfb-410b-a240-d7fae03ab9a1",
+      "name": "Init Video Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5488,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "queue_id": "={{ $json.queue_id }}",
+            "status": "processing",
+            "started_at": "={{ $json.started_at }}"
+          },
+          "matchingColumns": [
+            "queue_id"
+          ],
+          "schema": [
+            {
+              "id": "queue_id",
+              "displayName": "queue_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "scheduled_at",
+              "displayName": "scheduled_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "completed_at",
+              "displayName": "completed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d3924e59-1b94-4e88-a29b-11ea04ff431a",
+      "name": "Mark Queue Processing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -5504,
+        -1248
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "a4fe7374-6c35-46b5-804f-0973c8bf2789",
+      "name": "Generate Viral Title",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5504,
+        -672
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel || 'gpt-4o' }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You write high-CTR searchable YouTube titles for English AI automation tutorial channels (Make.com, n8n, Zapier, no-code). Return JSON: { \\\"viral_title\\\": string (include year 2026 when natural, max 70 chars), \\\"hook_text\\\": string (max 8 words, problem-focused) }\" },\n    { \"role\": \"user\", \"content\": \"Topic: {{ $('Init Video Job').first().json.topic }}\\nNiche: {{ $('Init Video Job').first().json.niche }}\\nPrefer titles like: How to..., Best..., X vs Y, Automate... with Make/n8n. Clear value, no misleading clickbait.\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel || 'gpt-4o' }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Write 60-second YouTube Shorts tutorial scripts (~150 words). Return JSON: { \\\"short_script\\\": string }\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ JSON.parse($('Generate Viral Title').first().json.choices[0].message.content).viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nHook in 2 seconds. End with CTA.\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "8411ae8c-bd3b-4fd4-b326-20e1e9a795dc",
+      "name": "Generate Short Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5200,
+        -1136
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel || 'gpt-4o' }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Write 8-10 minute faceless tutorial narration (~1500 words). Return JSON: { \\\"long_script\\\": string, \\\"chapters\\\": [{\\\"time\\\": string, \\\"title\\\": string}] }\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ JSON.parse($('Generate Viral Title').first().json.choices[0].message.content).viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nHook, steps (Make/n8n), recap, CTA for tools in description.\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "46656472-b853-4083-9b37-5108da7534ea",
+      "name": "Generate Long Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5264,
+        -608
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel || 'gpt-4o' }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Create scene-by-scene visual prompts for AI video. Return JSON: { \\\"scenes\\\": [{ \\\"id\\\": number, \\\"duration_sec\\\": number, \\\"visual_prompt\\\": string, \\\"motion\\\": string, \\\"narration_excerpt\\\": string }] }. 12 scenes for Short, 30 for long.\" },\n    { \"role\": \"user\", \"content\": \"Short script: {{ JSON.parse($('Generate Short Script').first().json.choices[0].message.content).short_script }}\\nLong script excerpt: {{ JSON.parse($('Generate Long Script').first().json.choices[0].message.content).long_script.slice(0,2000) }}\\nModern tech explainer, abstract dashboards, no readable text.\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "a207c624-0dbf-4f1e-a302-2bc3eff18558",
+      "name": "Generate Scene Prompts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5280,
+        -224
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeParse(nodeName, field) {\n  try {\n    const raw = $(nodeName).first()?.json?.choices?.[0]?.message?.content;\n    if (!raw) return {};\n    return JSON.parse(raw);\n  } catch (e) { return {}; }\n}\nconst job = $('Init Video Job').first().json;\nconst title = safeParse('Generate Viral Title');\nconst short = safeParse('Generate Short Script');\nconst long = safeParse('Generate Long Script');\nconst scenesData = safeParse('Generate Scene Prompts');\nconst scenes = scenesData.scenes || [];\nif (scenes.length === 0) {\n  return [{ json: { ...job, viral_title: title.viral_title || job.topic, hook_text: title.hook_text || 'Learn automation', short_script: short.short_script || '', long_script: long.long_script || '', scene: { id: 1, duration_sec: 5, visual_prompt: 'modern tech dashboard automation workflow', motion: 'slow zoom', narration_excerpt: '' } } }];\n}\nreturn scenes.map(s => ({ json: { ...job, viral_title: title.viral_title || job.topic, hook_text: title.hook_text || '', short_script: short.short_script || '', long_script: long.long_script || '', scene: s } }));"
+      },
+      "id": "2df9ad0a-44ab-4c87-80f8-92a88001011f",
+      "name": "Split Scenes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4896,
+        -1248
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $vars.OPENAI_IMAGE_MODEL || 'dall-e-3' }}\",\n  \"prompt\": \"{{ $json.scene.visual_prompt }}, cinematic, 16:9, modern SaaS tech explainer, clean lighting, no text\",\n  \"n\": 1,\n  \"size\": \"1792x1024\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "2794461e-22e8-4a47-82f5-9da38f3a6fba",
+      "name": "Generate Scene Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4880,
+        -864
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dev.runwayml.com/v1/image_to_video",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($('Init Video Job').first().json.runwayApiKey || $vars.RUNWAY_API_KEY || '') }}"
+            },
+            {
+              "name": "X-Runway-Version",
+              "value": "2024-11-06"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"promptImage\": \"{{ $json.data[0].url || $json.scene_assets?.image_url }}\",\n  \"promptText\": \"{{ $json.scene.visual_prompt }}\",\n  \"model\": \"gen3a_turbo\",\n  \"duration\": 5\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "3ea539f7-fb9d-4569-9c96-5fdddf616054",
+      "name": "Runway Video Gen (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4992,
+        -432
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeParse(nodeName, field) {\n  try {\n    const raw = $(nodeName).first()?.json?.choices?.[0]?.message?.content;\n    if (!raw) return {};\n    return JSON.parse(raw);\n  } catch (e) { return {}; }\n}\nconst items = $input.all();\nconst job = $('Init Video Job').first().json;\nconst title = safeParse('Generate Viral Title');\nconst short = safeParse('Generate Short Script');\nconst long = safeParse('Generate Long Script');\nconst sceneAssets = items.map((it, i) => {\n  const img = $('Generate Scene Image').all()[i]?.json?.data?.[0]?.url || '';\n  const runway = it.json?.id || it.json?.task_id || null;\n  return { id: i + 1, image_url: img, video_task_id: runway, prompt: it.json.scene?.visual_prompt || '' };\n});\nreturn [{ json: { ...job, viral_title: title.viral_title || job.topic, hook_text: title.hook_text || '', short_script: short.short_script || '', long_script: long.long_script || '', scene_assets_json: JSON.stringify(sceneAssets) } }];"
+      },
+      "id": "13b015a1-5e69-4518-ac7b-ed0480f097d7",
+      "name": "Collect Scene Assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4784,
+        -640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $('Init Video Job').first().json.voiceId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "={{ $('Init Video Job').first().json.elevenlabsApiKey || $vars.ELEVENLABS_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "audio/mpeg"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify(JSON.parse($('Generate Short Script').first().json.choices[0].message.content).short_script) }},\n  \"model_id\": \"{{ $('Init Video Job').first().json.elevenlabsModel || 'eleven_multilingual_v2' }}\",\n  \"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.75 }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "voiceover_short"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "d39bceab-8e7c-438a-a0d8-1293700d8611",
+      "name": "ElevenLabs Short Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4976,
+        -176
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tmpfiles.org/api/v1/upload",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "voiceover_short"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "a0c6fbc6-a419-4e9a-adec-419838930cca",
+      "name": "Upload Short Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4384,
+        -784
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const upload = $input.first().json;\nconst raw = upload?.data?.url || upload?.url || '';\nconst voiceover_url = raw ? raw.replace('tmpfiles.org/', 'tmpfiles.org/dl/') : '';\nconst job = $('Collect Scene Assets').first().json;\nreturn [{ json: { ...job, voiceover_short_url: voiceover_url } }];"
+      },
+      "id": "20d066c9-39f2-42c5-a6e8-b5d6ba21c52d",
+      "name": "Parse Voiceover URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4400,
+        -1296
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $('Init Video Job').first().json.voiceId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "={{ $('Init Video Job').first().json.elevenlabsApiKey || $vars.ELEVENLABS_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "audio/mpeg"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify(JSON.parse($('Generate Long Script').first().json.choices[0].message.content).long_script) }},\n  \"model_id\": \"{{ $('Init Video Job').first().json.elevenlabsModel || 'eleven_multilingual_v2' }}\",\n  \"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.75 }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "voiceover_long"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "7572e766-fc1c-41ab-924c-25ae525bcdae",
+      "name": "ElevenLabs Long Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4672,
+        -1168
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeParse(nodeName, field) {\n  try {\n    const raw = $(nodeName).first()?.json?.choices?.[0]?.message?.content;\n    if (!raw) return {};\n    return JSON.parse(raw);\n  } catch (e) { return {}; }\n}\nconst shortData = safeParse('Generate Short Script');\nconst short = shortData.short_script || 'Automation tutorial';\nconst words = short.split(/\\s+/).filter(Boolean);\nconst wps = 2.5;\nlet srt = '';\nlet t = 0;\nconst chunks = [];\nfor (let i = 0; i < words.length; i += 6) chunks.push(words.slice(i, i + 6).join(' '));\nchunks.forEach((chunk, idx) => {\n  const start = t;\n  const dur = Math.max(1, chunk.split(' ').length) / wps;\n  t += dur;\n  const fmt = s => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60),ms=Math.floor((s%1)*1000); return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')+','+String(ms).padStart(3,'0'); };\n  srt += (idx+1)+'\\n'+fmt(start)+' --> '+fmt(t)+'\\n'+chunk+'\\n\\n';\n});\nconst job = $('Parse Voiceover URL').first().json;\nreturn [{ json: { ...job, captions_srt: srt } }];"
+      },
+      "id": "7eacc5c1-1f38-41b6-b863-70fd2b60ec1b",
+      "name": "Generate Captions SRT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4192,
+        -1008
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel || 'gpt-4o' }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Return JSON: { \\\"thumbnail_prompt\\\": string } for a high-CTR YouTube thumbnail. Bold composition, 1280x720, no small text.\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ $('Collect Scene Assets').first().json.viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nTech tutorial thumbnail, automation theme, not horror.\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "3c72446e-ca7b-4d0b-83c1-42d6f753e49a",
+      "name": "Generate Thumbnail Prompt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4112,
+        -704
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $vars.OPENAI_IMAGE_MODEL || 'dall-e-3' }}\",\n  \"prompt\": \"{{ JSON.parse($('Generate Thumbnail Prompt').first().json.choices[0].message.content).thumbnail_prompt }}\",\n  \"n\": 1,\n  \"size\": \"1792x1024\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "be3f942f-7239-41f6-b203-0e1fb9e7fb14",
+      "name": "Generate Thumbnail Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4448,
+        -176
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Init Video Job').first().json.openaiModel || 'gpt-4o' }}\",\n  \"temperature\": 0.85,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Return JSON: { \\\"seo_title\\\": string (max 100 chars), \\\"seo_description\\\": string (with chapters/timestamps), \\\"seo_tags\\\": string (comma-separated, 15 tags) }\" },\n    { \"role\": \"user\", \"content\": \"Title: {{ $('Collect Scene Assets').first().json.viral_title }}\\nTopic: {{ $('Init Video Job').first().json.topic }}\\nLong script chapters: {{ JSON.parse($('Generate Long Script').first().json.choices[0].message.content).chapters }}\" }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "8f466366-3044-433d-9a34-961ef75a4815",
+      "name": "Generate SEO Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4288,
+        -448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Cx2GwShZqOGodlWH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeParse(nodeName, field) {\n  try {\n    const raw = $(nodeName).first()?.json?.choices?.[0]?.message?.content;\n    if (!raw) return {};\n    return JSON.parse(raw);\n  } catch (e) { return {}; }\n}\nconst job = $('Generate Captions SRT').first().json;\nconst voice = $('Parse Voiceover URL').first().json;\nconst seo = safeParse('Generate SEO Metadata');\nconst thumb = $('Generate Thumbnail Image').first()?.json?.data?.[0]?.url || '';\nconst thumbPrompt = safeParse('Generate Thumbnail Prompt');\nlet scenes = [];\ntry { scenes = JSON.parse(job.scene_assets_json || '[]'); } catch (e) { scenes = []; }\nconst modifications = {\n  voiceover_url: voice?.voiceover_short_url || '',\n  hook_text: job.hook_text || '',\n  captions_srt: job.captions_srt || '',\n  thumbnail_url: thumb\n};\nscenes.forEach((s, i) => { modifications['scene_' + (i + 1) + '_url'] = s.image_url || ''; });\nreturn [{ json: { ...job, voiceover_short_url: voice?.voiceover_short_url || '', thumbnail_url: thumb, thumbnail_prompt: thumbPrompt.thumbnail_prompt || '', seo_title: seo.seo_title || job.viral_title || job.topic, seo_description: seo.seo_description || '', seo_tags: seo.seo_tags || 'automation,n8n,make.com,ai', creatomate_modifications: modifications } }];"
+      },
+      "id": "f5ad2512-a05d-427b-a975-490eba5dbb14",
+      "name": "Build Creatomate Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3520,
+        -896
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($('Init Video Job').first().json.creatomateApiKey || $vars.CREATOMATE_API_KEY || '') }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"template_id\": \"{{ $('Build Creatomate Payload').first().json.creatomateShortTpl }}\",\n  \"modifications\": {{ JSON.stringify($json.creatomate_modifications) }}\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "11034c9e-db0b-44c2-a230-fa894ff16e19",
+      "name": "Render Short via Creatomate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3328,
+        -112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "7e2438be-7d9a-4f30-8eea-e62d547ae67e",
+      "name": "Wait for Short Render",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -2896,
+        -752
+      ],
+      "webhookId": "5b6a20b5-6ed7-4e05-a4b8-5551b0500d1b"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.creatomate.com/v1/renders/{{ $('Render Short via Creatomate').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($('Init Video Job').first().json.creatomateApiKey || $vars.CREATOMATE_API_KEY || '') }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "8d499abf-3cce-48d4-9b98-7b3d7ed268cf",
+      "name": "Poll Short Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2416,
+        -1200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($('Init Video Job').first().json.creatomateApiKey || $vars.CREATOMATE_API_KEY || '') }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"template_id\": \"{{ $('Build Creatomate Payload').first().json.creatomateLongTpl }}\",\n  \"modifications\": {{ JSON.stringify($json.creatomate_modifications) }}\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "3290db86-fc78-4855-9acc-5e65bb584f9d",
+      "name": "Render Long via Creatomate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3968,
+        -1296
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 120,
+        "unit": "seconds"
+      },
+      "id": "86e17f9e-d987-440b-8511-d971a582fd75",
+      "name": "Wait for Long Render",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -3728,
+        -1024
+      ],
+      "webhookId": "e94de256-d2e7-4a7e-93cf-2ecfc4ea6a7e"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.creatomate.com/v1/renders/{{ $('Render Long via Creatomate').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + ($('Init Video Job').first().json.creatomateApiKey || $vars.CREATOMATE_API_KEY || '') }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "6a348a15-47a2-4cde-8fc7-0bc729418e09",
+      "name": "Poll Long Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4096,
+        -128
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "5dd96a0e-1a6b-43cb-9cf0-c66874d6c823",
+      "name": "Merge Render Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -3424,
+        -1248
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Build Creatomate Payload').first().json;\nconst shortRender = $('Poll Short Render Status').first()?.json || {};\nconst longRender = $('Poll Long Render Status').first()?.json || {};\nreturn [{ json: {\n  ...payload,\n  final_short_url: shortRender.url || shortRender[0]?.url || '',\n  final_long_url: longRender.url || longRender[0]?.url || '',\n  creatomate_short_render_id: shortRender.id || '',\n  creatomate_long_render_id: longRender.id || '',\n  updated_at: new Date().toISOString()\n}}];"
+      },
+      "id": "0de99c3c-7767-4a5c-9ec1-934a3646b48c",
+      "name": "Prepare Upload Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3664,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.final_short_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "video_short"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "909dfc05-1e0e-48b2-a548-ce09730cc6b6",
+      "name": "Download Short Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2864,
+        -1232
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.seo_title }} #Shorts",
+        "categoryId": "={{ $vars.YOUTUBE_DEFAULT_CATEGORY || 28 }}",
+        "binaryProperty": "video_short",
+        "options": {
+          "description": "={{ $json.seo_description }}",
+          "privacyStatus": "={{ $vars.YOUTUBE_DEFAULT_PRIVACY || 'unlisted' }}",
+          "tags": "={{ $json.seo_tags }}"
+        }
+      },
+      "id": "b6e2a9f2-8846-421d-b7b7-94f80fb3949e",
+      "name": "Upload Short to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        -3152,
+        -576
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "YOUTUBE_OAUTH2",
+          "name": "YouTube OAuth2 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.final_long_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "video_long"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "f8d01449-8747-4394-a0cb-936ddcec085d",
+      "name": "Download Long Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3680,
+        -128
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.seo_title }}",
+        "categoryId": "={{ $vars.YOUTUBE_DEFAULT_CATEGORY || 28 }}",
+        "binaryProperty": "video_long",
+        "options": {
+          "description": "={{ $json.seo_description }}",
+          "privacyStatus": "={{ $vars.YOUTUBE_DEFAULT_PRIVACY || 'unlisted' }}",
+          "tags": "={{ $json.seo_tags }}"
+        }
+      },
+      "id": "fbff8a62-e5cf-44b1-9a32-8d3b94c143ab",
+      "name": "Upload Long to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        -3392,
+        -416
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000,
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "YOUTUBE_OAUTH2",
+          "name": "YouTube OAuth2 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "a3f27d3f-4f2f-4638-8ff4-3ae74704a6bb",
+      "name": "Merge YouTube Uploads",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -3184,
+        -1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Prepare Upload Data').first().json;\nconst shortYt = $('Upload Short to YouTube').first()?.json || {};\nconst longYt = $('Upload Long to YouTube').first()?.json || {};\nreturn [{ json: {\n  ...prep,\n  status: 'completed',\n  youtube_short_id: shortYt.id || '',\n  youtube_long_id: longYt.id || '',\n  youtube_short_url: shortYt.id ? 'https://youtube.com/shorts/' + shortYt.id : '',\n  youtube_long_url: longYt.id ? 'https://youtube.com/watch?v=' + longYt.id : '',\n  created_at: prep.started_at,\n  completed_at: new Date().toISOString()\n}}];"
+      },
+      "id": "ed1da858-6015-4133-8770-d2fa15c4fe0b",
+      "name": "Finalize Content Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2848,
+        -928
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Content",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b162cce8-7603-45d5-b26e-d5f371542530",
+      "name": "Save Content to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2592,
+        -704
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "queue_id": "={{ $json.queue_id }}",
+            "status": "completed",
+            "completed_at": "={{ $json.completed_at }}"
+          },
+          "matchingColumns": [
+            "queue_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "880d3809-3801-4616-8115-16a9404901a6",
+      "name": "Mark Queue Completed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2464,
+        -944
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Logs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "log_id",
+              "displayName": "log_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "metadata_json",
+              "displayName": "metadata_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a9c91883-c9ec-4419-85fe-4c56e611745c",
+      "name": "Log Production Success",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2048,
+        -1216
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "6cc36dda-a883-460d-be5c-b3e341382726",
+      "name": "No Items - Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -5712,
+        -752
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "sheetId",
+              "value": "={{ $vars.GOOGLE_SHEETS_DOCUMENT_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "queueTab",
+              "value": "={{ $vars.GOOGLE_SHEETS_QUEUE_TAB || 'Queue' }}",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "contentTab",
+              "value": "={{ $vars.GOOGLE_SHEETS_CONTENT_TAB || 'Content' }}",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "openaiModel",
+              "value": "={{ $vars.OPENAI_MODEL || 'gpt-4o' }}",
+              "type": "string"
+            },
+            {
+              "id": "c5",
+              "name": "voiceId",
+              "value": "={{ $vars.ELEVENLABS_VOICE_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c6",
+              "name": "niche",
+              "value": "={{ $vars.CHANNEL_NICHE || 'AI Workflow & Automation for Business - Make.com n8n Zapier no-code tutorials' }}",
+              "type": "string"
+            },
+            {
+              "id": "c7",
+              "name": "creatomateShortTpl",
+              "value": "={{ $vars.CREATOMATE_SHORT_TEMPLATE_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c8",
+              "name": "creatomateLongTpl",
+              "value": "={{ $vars.CREATOMATE_LONG_TEMPLATE_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "c9",
+              "name": "openaiImageModel",
+              "value": "={{ $vars.OPENAI_IMAGE_MODEL || 'dall-e-3' }}",
+              "type": "string"
+            },
+            {
+              "id": "c10",
+              "name": "elevenlabsModel",
+              "value": "={{ $vars.ELEVENLABS_MODEL || 'eleven_multilingual_v2' }}",
+              "type": "string"
+            },
+            {
+              "id": "c11",
+              "name": "runwayApiKey",
+              "value": "={{ $vars.RUNWAY_API_KEY || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "c12",
+              "name": "elevenlabsApiKey",
+              "value": "={{ $vars.ELEVENLABS_API_KEY || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "c13",
+              "name": "creatomateApiKey",
+              "value": "={{ $vars.CREATOMATE_API_KEY || \"\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6e6d3312-3f2d-4a3e-bf4f-625c1b85e599",
+      "name": "Load Config1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5728,
+        -528
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "={{ $vars.WORKFLOW_ERROR_HANDLER_ID }}",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "02-video-production",
+            "error_message": "={{ $json.execution.error.message }}",
+            "node_name": "={{ $json.execution.lastNodeExecuted }}",
+            "queue_id": "={{ $json.execution?.data?.[0]?.json?.queue_id || '' }}",
+            "metadata_json": "={{ JSON.stringify($json.execution) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "3e6366c9-fd13-4b26-8beb-029b33e841e1",
+      "name": "Call Error Handler1",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -3056,
+        -160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "bb9d6c58-064c-42ed-94a0-d832c01e838c",
+      "name": "Sub-Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2112,
+        -1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst execution = input.execution || input;\nconst { randomUUID } = require('crypto');\n\nconst errorMessage = input.error_message\n  || execution?.error?.message\n  || 'Unknown error';\nconst nodeName = input.node_name\n  || execution?.lastNodeExecuted\n  || 'unknown';\nconst workflow = input.workflow\n  || execution?.workflow?.name\n  || 'unknown';\nconst queueId = input.queue_id || '';\nconst videoId = input.video_id || '';\n\nreturn [{\n  json: {\n    error_id: randomUUID(),\n    timestamp: new Date().toISOString(),\n    workflow,\n    node_name: nodeName,\n    queue_id: queueId,\n    video_id: videoId,\n    error_message: errorMessage,\n    stack_trace: JSON.stringify(execution?.error?.stack || execution?.error || {}),\n    retry_count: parseInt(input.retry_count || '0', 10),\n    sheetId: '1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0',\n    errorsTab: 'Errors',\n    queueTab: 'Queue',\n    logsTab: 'Logs',\n    metadata_json: input.metadata_json || JSON.stringify(execution)\n  }\n}];"
+      },
+      "id": "c8236528-3e5f-4c10-adce-f58f208ce36c",
+      "name": "Normalize Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1712,
+        -736
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Errors",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "error_id",
+              "displayName": "error_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "node_name",
+              "displayName": "node_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "queue_id",
+              "displayName": "queue_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_id",
+              "displayName": "video_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "stack_trace",
+              "displayName": "stack_trace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c9569aed-7fd6-4e74-b897-7aaf950cacd5",
+      "name": "Log to Errors Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1280,
+        -752
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-queue",
+              "leftValue": "={{ $('Normalize Error Payload').first().json.queue_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "can-retry",
+              "leftValue": "={{ $('Normalize Error Payload').first().json.retry_count }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "032836e1-773e-450b-8f43-a5892dd7e214",
+      "name": "Should Retry Queue Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1744,
+        -1152
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "queue_id": "={{ $('Normalize Error Payload').first().json.queue_id }}",
+            "status": "retry",
+            "retry_count": "={{ $('Normalize Error Payload').first().json.retry_count + 1 }}",
+            "error_message": "={{ $('Normalize Error Payload').first().json.error_message }}",
+            "scheduled_at": "={{ $now.plus({ minutes: 30 }).toISO() }}"
+          },
+          "matchingColumns": [
+            "queue_id"
+          ],
+          "schema": [
+            {
+              "id": "queue_id",
+              "displayName": "queue_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "scheduled_at",
+              "displayName": "scheduled_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "completed_at",
+              "displayName": "completed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "81ee2c73-a9a9-4651-a1c5-b38a7c4b89d2",
+      "name": "Mark Queue for Retry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1456,
+        -960
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "queue_id": "={{ $('Normalize Error Payload').first().json.queue_id }}",
+            "status": "failed",
+            "error_message": "={{ $('Normalize Error Payload').first().json.error_message }}",
+            "completed_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "queue_id"
+          ],
+          "schema": [
+            {
+              "id": "queue_id",
+              "displayName": "queue_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "scheduled_at",
+              "displayName": "scheduled_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "completed_at",
+              "displayName": "completed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "7c73489e-9cae-47c0-bc77-7073c728b820",
+      "name": "Mark Queue Failed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1248,
+        -1152
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=1iroszMZekztryhZ9djZ2IGcv6QRRm_o-EAMR6j1UPh0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Logs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "log_id": "={{ $('Normalize Error Payload').first().json.error_id }}",
+            "timestamp": "={{ $('Normalize Error Payload').first().json.timestamp }}",
+            "level": "error",
+            "workflow": "={{ $('Normalize Error Payload').first().json.workflow }}",
+            "message": "=Error in {{ $('Normalize Error Payload').first().json.node_name }}: {{ $('Normalize Error Payload').first().json.error_message }}",
+            "metadata_json": "={{ $('Normalize Error Payload').first().json.metadata_json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "log_id",
+              "displayName": "log_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metadata_json",
+              "displayName": "metadata_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "44ce7216-bbea-4f7d-8dee-bf266ad55d59",
+      "name": "Log to Logs Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -960,
+        -672
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "b34Im1YM43gUfAuZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "prod-error-trigger-0001",
+      "name": "On Production Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -6192,
+        -200
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 6AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reddit n8n",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Google News RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google News RSS": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Topic Sources": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Curate Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Curate Topics": {
+      "main": [
+        [
+          {
+            "node": "Build Queue Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Queue Items": {
+      "main": [
+        [
+          {
+            "node": "Write Queue to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Queue to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Call Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly Queue Processor": {
+      "main": [
+        [
+          {
+            "node": "Load Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Pending Item": {
+      "main": [
+        [
+          {
+            "node": "Has Processable Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Processable Item?": {
+      "main": [
+        [
+          {
+            "node": "Init Video Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Items - Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Video Job": {
+      "main": [
+        [
+          {
+            "node": "Mark Queue Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Queue Processing": {
+      "main": [
+        [
+          {
+            "node": "Generate Viral Title",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Viral Title": {
+      "main": [
+        [
+          {
+            "node": "Generate Short Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Short Script": {
+      "main": [
+        [
+          {
+            "node": "Generate Long Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Long Script": {
+      "main": [
+        [
+          {
+            "node": "Generate Scene Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Scene Prompts": {
+      "main": [
+        [
+          {
+            "node": "Split Scenes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Scenes": {
+      "main": [
+        [
+          {
+            "node": "Generate Scene Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Scene Image": {
+      "main": [
+        [
+          {
+            "node": "Runway Video Gen (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Runway Video Gen (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Collect Scene Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Scene Assets": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs Short Voiceover",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ElevenLabs Long Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Short Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Upload Short Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Short Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Parse Voiceover URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Voiceover URL": {
+      "main": [
+        [
+          {
+            "node": "Generate Captions SRT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Long Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Generate Captions SRT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Captions SRT": {
+      "main": [
+        [
+          {
+            "node": "Generate Thumbnail Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thumbnail Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Thumbnail Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thumbnail Image": {
+      "main": [
+        [
+          {
+            "node": "Generate SEO Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate SEO Metadata": {
+      "main": [
+        [
+          {
+            "node": "Build Creatomate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Creatomate Payload": {
+      "main": [
+        [
+          {
+            "node": "Render Short via Creatomate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Render Long via Creatomate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Short via Creatomate": {
+      "main": [
+        [
+          {
+            "node": "Wait for Short Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Short Render": {
+      "main": [
+        [
+          {
+            "node": "Poll Short Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Long via Creatomate": {
+      "main": [
+        [
+          {
+            "node": "Wait for Long Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Long Render": {
+      "main": [
+        [
+          {
+            "node": "Poll Long Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Short Render Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Render Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Long Render Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Render Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Render Results": {
+      "main": [
+        [
+          {
+            "node": "Prepare Upload Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Upload Data": {
+      "main": [
+        [
+          {
+            "node": "Download Short Video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download Long Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Short Video": {
+      "main": [
+        [
+          {
+            "node": "Upload Short to YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Long Video": {
+      "main": [
+        [
+          {
+            "node": "Upload Long to YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Short to YouTube": {
+      "main": [
+        [
+          {
+            "node": "Merge YouTube Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Long to YouTube": {
+      "main": [
+        [
+          {
+            "node": "Merge YouTube Uploads",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge YouTube Uploads": {
+      "main": [
+        [
+          {
+            "node": "Finalize Content Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Content Record": {
+      "main": [
+        [
+          {
+            "node": "Save Content to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Content to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Mark Queue Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Queue Completed": {
+      "main": [
+        [
+          {
+            "node": "Log Production Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config1": {
+      "main": [
+        [
+          {
+            "node": "Get Next Pending Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sub-Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Error Payload": {
+      "main": [
+        [
+          {
+            "node": "Log to Errors Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Errors Sheet": {
+      "main": [
+        [
+          {
+            "node": "Should Retry Queue Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Retry Queue Item?": {
+      "main": [
+        [
+          {
+            "node": "Mark Queue for Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Queue Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Queue for Retry": {
+      "main": [
+        [
+          {
+            "node": "Log to Logs Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Queue Failed": {
+      "main": [
+        [
+          {
+            "node": "Log to Logs Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reddit n8n": {
+      "main": [
+        [
+          {
+            "node": "Merge Topic Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Production Error": {
+      "main": [
+        [
+          {
+            "node": "Call Error Handler1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "cb322bdb-a913-49ad-b887-95b595b9cf1c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "youtube-automation-production"
+  },
+  "id": "G9fZzsrIjzJpPkwS",
+  "tags": [
+    {
+      "name": "youtube-automation"
+    }
+  ]
+}

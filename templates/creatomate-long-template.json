@@ -1,0 +1,48 @@
+{
+  "output_format": "mp4",
+  "width": 1920,
+  "height": 1080,
+  "frame_rate": 30,
+  "duration": 600,
+  "elements": [
+    {
+      "type": "composition",
+      "track": 1,
+      "duration": 600,
+      "elements": [
+        {
+          "type": "audio",
+          "track": 1,
+          "source": "{{ voiceover_url }}",
+          "time": 0
+        },
+        {
+          "type": "image",
+          "track": 2,
+          "source": "{{ thumbnail_url }}",
+          "time": 0,
+          "duration": 8,
+          "width": "100%",
+          "height": "100%",
+          "fit": "cover",
+          "animations": [
+            { "type": "scale", "fade": true, "start_scale": "100%", "end_scale": "110%", "duration": 8 }
+          ]
+        },
+        {
+          "type": "subtitles",
+          "track": 3,
+          "source": "{{ captions_srt }}",
+          "time": 0,
+          "font_family": "Montserrat",
+          "font_weight": "600",
+          "font_size": "4 vmin",
+          "fill_color": "#ffffff",
+          "stroke_color": "#000000",
+          "stroke_width": "0.15 vmin"
+        }
+      ]
+    }
+  ],
+  "_note": "Scene clips are injected dynamically via n8n Code node before render. Upload this as a Creatomate template and replace scene placeholders with {{ scene_N_url }} elements generated from OpenAI scene prompts."
+}
