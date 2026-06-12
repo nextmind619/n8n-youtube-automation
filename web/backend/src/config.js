@@ -32,6 +32,11 @@ export const config = {
       topicDiscovery: process.env.WORKFLOW_TOPIC_DISCOVERY_ID || '',
       videoProduction: process.env.WORKFLOW_VIDEO_PRODUCTION_ID || '',
     },
+    webhooks: {
+      discovery: process.env.N8N_WEBHOOK_DISCOVERY_PATH || '',
+      production: process.env.N8N_WEBHOOK_PRODUCTION_PATH || '',
+      fallback: process.env.N8N_WEBHOOK_PATH || '',
+    },
   },
   sheets: {
     documentId: process.env.GOOGLE_SHEETS_DOCUMENT_ID || '',

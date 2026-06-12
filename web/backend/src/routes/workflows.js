@@ -29,7 +29,7 @@ router.post('/trigger/:type', async (req, res, next) => {
       });
     }
 
-    const result = await triggerWorkflow(workflowId);
+    const result = await triggerWorkflow(workflowId, type);
     res.json({ success: true, result });
   } catch (err) {
     next(err);
